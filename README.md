@@ -44,6 +44,15 @@ classificador escatologia
 classificador tecnologia
 ```
 
+Exemplos reais do acervo:
+
+```powershell
+classificador casamento
+classificador "Eliel Batista"
+classificador prefaciante
+classificador escatologia
+```
+
 Buscar por prefácio:
 
 ```powershell
@@ -89,6 +98,32 @@ Ele grava em cada `classificador.md`:
 - lista `prefaciantes`
 - bloco JSON estruturado para leitura automática
 
+## Ajustes manuais
+
+Os ajustes finos ficam em `overrides.json`.
+
+Use esse arquivo quando você quiser:
+
+- corrigir resumo
+- forçar categorias
+- adicionar ou remover ênfase temática
+- preservar exceções do acervo sem mexer no código
+
+Estrutura:
+
+```json
+{
+  "slug_da_pasta": {
+    "resumo": "Resumo manual",
+    "publico": ["casais", "lideres"],
+    "tema": ["casamento"],
+    "uso": ["aconselhamento"]
+  }
+}
+```
+
+O `slug_da_pasta` é derivado do nome da pasta do livro.
+
 ## Prefaciantes
 
 Quando há arquivo de prefácio escrito por terceiro, o sistema tenta extrair o nome do prefaciante a partir do nome do arquivo, por exemplo:
@@ -124,3 +159,4 @@ gh auth login
 
 - O comando `classificador` já funciona no terminal atual.
 - Se uma nova sessão de terminal não reconhecer o comando, basta abrir um novo terminal.
+- A licença do projeto é `MIT`.

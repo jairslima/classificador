@@ -11,6 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $ScriptDir "config.json"
+$OverridesPath = Join-Path $ScriptDir "overrides.json"
 
 function Normalize-Text([string]$Text) {
     if ([string]::IsNullOrWhiteSpace($Text)) { return "" }
@@ -52,6 +53,16 @@ function Add-RootToConfig([string]$Path) {
         Save-Json $ConfigPath $cfg
     }
     $resolved
+}
+
+function Get-Overrides {
+    $raw = Read-Json $OverridesPath
+    if (-not $raw) { return @{} }
+    $map = @{}
+    foreach ($prop in $raw.PSObject.Properties) {
+        $map[$prop.Name] = $prop.Value
+    }
+    return $map
 }
 
 function Support-File([string]$Name) {
@@ -135,26 +146,6 @@ function Category-Labels {
 function New-List { New-Object 'System.Collections.Generic.List[string]' }
 function Add-Once($List,[string]$Value) { if ($Value -and -not $List.Contains($Value)) { $List.Add($Value) } }
 
-function Override-Map {
-    @{
-        "o_amor_que_restaura" = @{ resumo="Casamento cristão, perdão, restauração conjugal e família."; publico=@("casais","familias"); tema=@("casamento","familia"); uso=@("aconselhamento","ministerio_familia") }
-        "deus_nao_deu_uma_esposa_pronta_pra_jesus" = @{ resumo="Relacionamento, preparo para o casamento e casais cristãos."; publico=@("casais","jovens"); tema=@("casamento","familia"); uso=@("aconselhamento","ministerio_familia") }
-        "casamento_uma_revelacao_progressiva" = @{ resumo="Panorama bíblico do casamento para estudo e ministério de família."; publico=@("casais","lideres","estudiosos"); tema=@("casamento","teologia_biblica"); uso=@("ensino","ministerio_familia") }
-        "um_casamento_para_a_eternidade_segunda_edicao" = @{ resumo="Casamento cristão, aliança e vida conjugal."; publico=@("casais","familias"); tema=@("casamento","familia"); uso=@("aconselhamento","ministerio_familia"); fase=@("lancado") }
-        "quando_deus_fica_em_silencio" = @{ resumo="Burnout cristão, cansaço espiritual e renovação."; publico=@("igreja","lideres","pastores"); tema=@("saude_mental","vida_crista"); uso=@("aconselhamento") }
-        "rpg_de_batalha_espiritual_apocaliptica" = @{ resumo="Narrativa lúdica cristã com apocalipse e batalha espiritual."; publico=@("jovens"); tema=@("batalha_espiritual","ficcao_crista","rpg_cristao","escatologia"); formato=@("romance"); uso=@("discipulado") }
-        "o_mestre_das_perguntas" = @{ resumo="Ensino bíblico sobre as perguntas de Jesus."; publico=@("igreja","pregadores","lideres"); tema=@("teologia_biblica"); uso=@("ensino","pregacao") }
-        "todas_as_perguntas_de_jesus" = @{ resumo="Estudo bíblico organizado por evangelhos sobre as perguntas de Jesus."; publico=@("igreja","pregadores","estudiosos"); tema=@("teologia_biblica"); uso=@("ensino","pregacao") }
-        "a_anatomia_do_invisivel" = @{ resumo="Mundo espiritual e batalha espiritual à luz da Bíblia."; publico=@("igreja","lideres"); tema=@("batalha_espiritual"); uso=@("ensino","aconselhamento") }
-        "o_deus_que_fala" = @{ resumo="Revelação, escuta espiritual e relacionamento com Deus."; publico=@("igreja","lideres"); tema=@("vida_crista","oracao"); uso=@("discipulado") }
-        "os_improvaveis" = @{ resumo="Chamado dos apóstolos, discipulado e transformação."; publico=@("jovens","igreja","lideres"); tema=@("personagens_biblicos","vida_crista"); uso=@("discipulado","pregacao") }
-        "jose_manuel_da_conceicao" = @{ resumo="Biografia histórica do protestantismo brasileiro."; publico=@("igreja","estudiosos"); tema=@("historia_da_igreja"); uso=@("ensino") }
-        "26_razoes_por_que_2026_sera_o_ano_da_sua_vida" = @{ resumo="Encorajamento e motivação cristã."; publico=@("igreja","jovens"); tema=@("vida_crista"); uso=@("aconselhamento","discipulado") }
-        "teologia_sistematica_pentecostal" = @{ resumo="Curso modular de formação teológica pentecostal."; publico=@("estudiosos","lideres","pregadores"); tema=@("teologia_pentecostal","teologia_biblica"); formato=@("curso_modular"); uso=@("ensino","pregacao") }
-        "teologia_do_hebraismo" = @{ resumo="Estudo introdutório de categorias hebraicas e leitura bíblica."; publico=@("estudiosos","lideres"); tema=@("teologia_biblica"); uso=@("ensino") }
-    }
-}
-
 function Rule-Map {
     @{
         publico = @{
@@ -212,7 +203,7 @@ function Classify($FolderPath, $PrimaryFiles) {
     $n = Normalize-Text $text
     $labels = Category-Labels
     $rules = Rule-Map
-    $ov = Override-Map
+    $ov = Get-Overrides
     $slug = Slug (Split-Path -Leaf $FolderPath)
     $cats = @{ publico=(New-List); tema=(New-List); formato=(New-List); uso=(New-List); fase=(New-List); especiais=(New-List) }
     foreach ($dim in $rules.Keys) {
