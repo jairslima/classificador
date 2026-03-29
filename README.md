@@ -131,11 +131,19 @@ Quando há arquivo de prefácio escrito por terceiro, o sistema tenta extrair o 
 - `Apresentacao do Livro por pastor Eliel Batista.docx`
 - `JOABE - PREFACIO COUTO.docx`
 
+Também trata alguns casos em que o texto veio como dedicatória ou apresentação, desde que o nome do terceiro possa ser inferido do arquivo ou do conteúdo interno do `.docx`.
+
+Regras atuais:
+
+- ignora prefácios feitos pelo próprio autor, como `Jair Lima`
+- aceita prefácios de terceiros detectados por nome do arquivo
+- tenta extrair nomes do conteúdo interno de arquivos `.docx` de prefácio, apresentação e dedicatória
+
 Limite atual:
 
 - a detecção de prefaciantes usa principalmente o nome do arquivo
-- não faz interpretação profunda do conteúdo interno do prefácio
-- prefácios genéricos como `Prefácio.docx` podem exigir refinamento futuro
+- faz leitura simples do conteúdo interno de `.docx`, mas ainda não cobre todos os formatos possíveis
+- prefácios genéricos como `Prefácio.docx` ainda podem exigir refinamento futuro
 
 ## Publicação no GitHub
 

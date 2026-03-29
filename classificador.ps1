@@ -133,6 +133,21 @@ function Docx-Snippet([string]$Path) {
     } catch { "" } finally { if ($zip) { $zip.Dispose() } }
 }
 
+function Docx-FullText([string]$Path) {
+    if ([IO.Path]::GetExtension($Path).ToLowerInvariant() -ne ".docx") { return "" }
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($Path)
+        $entry = $zip.GetEntry("word/document.xml")
+        if (-not $entry) { return "" }
+        $reader = New-Object IO.StreamReader($entry.Open())
+        $xml = $reader.ReadToEnd(); $reader.Close()
+        $text = [regex]::Replace($xml, "<[^>]+>", " ")
+        $text = [System.Net.WebUtility]::HtmlDecode($text)
+        [regex]::Replace($text, "\s+", " ").Trim()
+    } catch { "" } finally { if ($zip) { $zip.Dispose() } }
+}
+
 function Category-Labels {
     @{
         casais="Casais"; familias="Famílias"; mulheres="Mulheres"; homens="Homens"; jovens="Jovens"; criancas="Crianças"; lideres="Líderes"; pastores="Pastores"; pregadores="Pregadores"; igreja="Igreja"; estudiosos="Estudiosos";
@@ -173,26 +188,90 @@ function Clean-PersonName([string]$Text) {
     }) -join ' ').Trim()
 }
 
+function Is-OwnName([string]$Name) {
+    $n = Normalize-Text $Name
+    return $n -match '\bjair\b' -and $n -match '\blima\b'
+}
+
+function Is-PlausiblePersonName([string]$Name) {
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    $normalized = Normalize-Text $Name
+    $tokens = @($normalized -split ' ' | Where-Object { $_ })
+    if ($tokens.Count -lt 1 -or $tokens.Count -gt 4) { return $false }
+
+    $stopwords = @(
+        'conhecimento','todos','aqueles','explorar','valores','fundamentais','mais','contribuicoes','valiosas',
+        'esta','esse','essa','como','para','livro','prefacio','prefacio','apresentacao','dedicatoria','uma','por','de',
+        'do','da','dos','das','que','com','sem','sobre','aos','aquelas','aquela','aquele','aqueles'
+    )
+
+    foreach ($token in $tokens) {
+        if ($token.Length -lt 2) { return $false }
+        if ($stopwords -contains $token) { return $false }
+    }
+
+    return $true
+}
+
+function Extract-PersonCandidates([string]$Text) {
+    $candidates = New-List
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @($candidates) }
+
+    $patterns = @(
+        '(?is)(?:pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria)\s+(?:por|de)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){0,4})',
+        '(?is)\bpor\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,4})',
+        '(?is)\bde\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,4})'
+    )
+
+    foreach ($pattern in $patterns) {
+        foreach ($match in [regex]::Matches($Text, $pattern)) {
+            $clean = Clean-PersonName $match.Groups[1].Value
+            if ($clean -and (Is-PlausiblePersonName $clean) -and -not (Is-OwnName $clean)) {
+                Add-Once $candidates $clean
+            }
+        }
+    }
+
+    $tail = if ($Text.Length -gt 500) { $Text.Substring($Text.Length - 500) } else { $Text }
+    foreach ($line in ($tail -split '(?<=[\.\!\?])\s+|\r?\n')) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^[\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,4}$') {
+            $clean = Clean-PersonName $trimmed
+            if ($clean -and (Is-PlausiblePersonName $clean) -and -not (Is-OwnName $clean)) {
+                Add-Once $candidates $clean
+            }
+        }
+    }
+
+    @($candidates)
+}
+
 function Get-Prefaciantes([string]$FolderPath) {
     $files = Get-ChildItem -LiteralPath $FolderPath -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in ".doc",".docx" -and $_.BaseName -match '(?i)pref[aá]cio|apresenta[cç][aã]o do livro por' }
+        Where-Object { $_.Extension -in ".doc",".docx" -and $_.BaseName -match '(?i)pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria' }
     $names = New-List
     foreach ($file in $files) {
         $base = $file.BaseName
-        $candidate = ""
+        $candidates = New-List
         if ($base -match '(?i)apresenta[cç][aã]o do livro por\s+(.+)$') {
-            $candidate = $matches[1]
+            Add-Once $candidates (Clean-PersonName $matches[1])
         } elseif ($base -match '(?i)\bpor\s+(.+)$') {
-            $candidate = $matches[1]
+            Add-Once $candidates (Clean-PersonName $matches[1])
         } elseif ($base -match '(?i)pref[aá]cio(?: do livro)?\s+(.+)$') {
-            $candidate = $matches[1]
+            Add-Once $candidates (Clean-PersonName $matches[1])
         } elseif ($base -match '(?i)^.+?\s+pref[aá]cio\s+(.+)$') {
-            $candidate = $matches[1]
+            Add-Once $candidates (Clean-PersonName $matches[1])
         }
-        $clean = Clean-PersonName $candidate
-        $normalized = Normalize-Text $clean
-        if ($normalized -and $normalized -notmatch '\bjair\b|\blima\b') {
-            Add-Once $names $clean
+
+        $docText = Docx-FullText $file.FullName
+        foreach ($person in (Extract-PersonCandidates $docText)) {
+            Add-Once $candidates $person
+        }
+
+        foreach ($candidate in $candidates) {
+            if ($candidate -and (Is-PlausiblePersonName $candidate) -and -not (Is-OwnName $candidate)) {
+                Add-Once $names $candidate
+            }
         }
     }
     @($names | Sort-Object -Unique)
