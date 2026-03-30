@@ -190,7 +190,15 @@ function Clean-PersonName([string]$Text) {
 
 function Is-OwnName([string]$Name) {
     $n = Normalize-Text $Name
-    return $n -match '\bjair\b' -and $n -match '\blima\b'
+    return $n -match '\bjair\b'
+}
+
+function Looks-LikeBookTitle([string]$Candidate, [string]$FolderPath) {
+    $candidateTokens = @((Normalize-Text $Candidate) -split ' ' | Where-Object { $_.Length -ge 3 })
+    $folderTokens = @((Normalize-Text (Split-Path -Leaf $FolderPath)) -split ' ' | Where-Object { $_.Length -ge 3 })
+    if (-not $candidateTokens.Count -or -not $folderTokens.Count) { return $false }
+    $overlap = @($candidateTokens | Where-Object { $folderTokens -contains $_ })
+    return $overlap.Count -ge [Math]::Ceiling($candidateTokens.Count / 2)
 }
 
 function Is-PlausiblePersonName([string]$Name) {
@@ -213,14 +221,18 @@ function Is-PlausiblePersonName([string]$Name) {
     return $true
 }
 
+function Is-GenericPrefaceFile([string]$BaseName) {
+    $n = Normalize-Text $BaseName
+    return $n -match '^(prefacio|prefacio do livro|prefacio para o livro|prefacio livro|apresentacao|apresentacao do livro|dedicatoria)$'
+}
+
 function Extract-PersonCandidates([string]$Text) {
     $candidates = New-List
     if ([string]::IsNullOrWhiteSpace($Text)) { return @($candidates) }
 
     $patterns = @(
-        '(?is)(?:pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria)\s+(?:por|de)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){0,4})',
-        '(?is)\bpor\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,4})',
-        '(?is)\bde\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,4})'
+        '(?is)(?:pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria)\s+(?:por|de)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){0,3})',
+        '(?is)(?:assinado\s+por|escrito\s+por|por)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,3})'
     )
 
     foreach ($pattern in $patterns) {
@@ -232,23 +244,12 @@ function Extract-PersonCandidates([string]$Text) {
         }
     }
 
-    $tail = if ($Text.Length -gt 500) { $Text.Substring($Text.Length - 500) } else { $Text }
-    foreach ($line in ($tail -split '(?<=[\.\!\?])\s+|\r?\n')) {
-        $trimmed = $line.Trim()
-        if ($trimmed -match '^[\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,4}$') {
-            $clean = Clean-PersonName $trimmed
-            if ($clean -and (Is-PlausiblePersonName $clean) -and -not (Is-OwnName $clean)) {
-                Add-Once $candidates $clean
-            }
-        }
-    }
-
     @($candidates)
 }
 
 function Get-Prefaciantes([string]$FolderPath) {
     $files = Get-ChildItem -LiteralPath $FolderPath -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in ".doc",".docx" -and $_.BaseName -match '(?i)pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria' }
+        Where-Object { $_.Extension -in ".doc",".docx",".pdf" -and $_.BaseName -match '(?i)pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria' }
     $names = New-List
     foreach ($file in $files) {
         $base = $file.BaseName
@@ -263,13 +264,15 @@ function Get-Prefaciantes([string]$FolderPath) {
             Add-Once $candidates (Clean-PersonName $matches[1])
         }
 
-        $docText = Docx-FullText $file.FullName
-        foreach ($person in (Extract-PersonCandidates $docText)) {
-            Add-Once $candidates $person
+        if ($candidates.Count -eq 0 -or (Is-GenericPrefaceFile $base)) {
+            $docText = Docx-FullText $file.FullName
+            foreach ($person in (Extract-PersonCandidates $docText)) {
+                Add-Once $candidates $person
+            }
         }
 
         foreach ($candidate in $candidates) {
-            if ($candidate -and (Is-PlausiblePersonName $candidate) -and -not (Is-OwnName $candidate)) {
+            if ($candidate -and (Is-PlausiblePersonName $candidate) -and -not (Is-OwnName $candidate) -and -not (Looks-LikeBookTitle $candidate $FolderPath)) {
                 Add-Once $names $candidate
             }
         }
