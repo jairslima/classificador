@@ -148,6 +148,39 @@ function Docx-FullText([string]$Path) {
     } catch { "" } finally { if ($zip) { $zip.Dispose() } }
 }
 
+function Pdf-FullText([string]$Path) {
+    if ([IO.Path]::GetExtension($Path).ToLowerInvariant() -ne ".pdf") { return "" }
+    $word = $null
+    $doc = $null
+    try {
+        $word = New-Object -ComObject Word.Application
+        $word.Visible = $false
+        $word.DisplayAlerts = 0
+        $doc = $word.Documents.Open($Path, $false, $true)
+        $text = $doc.Content.Text
+        if ([string]::IsNullOrWhiteSpace($text)) { return "" }
+        return ([regex]::Replace($text, "\s+", " ")).Trim()
+    } catch {
+        return ""
+    } finally {
+        if ($doc) { $doc.Close([ref]$false) }
+        if ($word) { $word.Quit() }
+        foreach ($com in @($doc, $word)) {
+            if ($com) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($com) }
+        }
+        [GC]::Collect()
+        [GC]::WaitForPendingFinalizers()
+    }
+}
+
+function Document-FullText([string]$Path) {
+    switch ([IO.Path]::GetExtension($Path).ToLowerInvariant()) {
+        ".docx" { return Docx-FullText $Path }
+        ".pdf" { return Pdf-FullText $Path }
+        default { return "" }
+    }
+}
+
 function Category-Labels {
     @{
         casais="Casais"; familias="Famílias"; mulheres="Mulheres"; homens="Homens"; jovens="Jovens"; criancas="Crianças"; lideres="Líderes"; pastores="Pastores"; pregadores="Pregadores"; igreja="Igreja"; estudiosos="Estudiosos";
@@ -232,7 +265,9 @@ function Extract-PersonCandidates([string]$Text) {
 
     $patterns = @(
         '(?is)(?:pref[aá]cio|apresenta[cç][aã]o|dedicat[oó]ria)\s+(?:por|de)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){0,3})',
-        '(?is)(?:assinado\s+por|escrito\s+por|por)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,3})'
+        '(?is)(?:assinado\s+por|escrito\s+por)\s+([\p{Lu}][\p{L}]+(?:\s+[\p{Lu}][\p{L}]+){1,3})',
+        '(?is)(?:com\s+(?:a\s+)?(?:mais\s+alta\s+recomenda[cç][aã]o|gratid[aã]o|carinho|estima)[\s:;\-]+)(?:pr\.?\s+|pastor\s+|pb\.?\s+|rev\.?\s+|dr\.?\s+|dra\.?\s+)?([\p{Lu}][\p{L}]+(?:\s+(?:de|da|do|dos|das))?(?:\s+[\p{Lu}][\p{L}]+){1,4})',
+        '(?im)(?:^|[;:\-]\s*)(?:pr\.?|pastor|pb\.?|rev\.?|dr\.?|dra\.?)\s+([\p{Lu}][\p{L}]+(?:\s+(?:de|da|do|dos|das))?(?:\s+[\p{Lu}][\p{L}]+){1,4})'
     )
 
     foreach ($pattern in $patterns) {
@@ -265,7 +300,7 @@ function Get-Prefaciantes([string]$FolderPath) {
         }
 
         if ($candidates.Count -eq 0 -or (Is-GenericPrefaceFile $base)) {
-            $docText = Docx-FullText $file.FullName
+            $docText = Document-FullText $file.FullName
             foreach ($person in (Extract-PersonCandidates $docText)) {
                 Add-Once $candidates $person
             }
