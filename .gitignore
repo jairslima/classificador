@@ -3,3 +3,13 @@
 *.bak
 Thumbs.db
 Desktop.ini
+
+# Seguranca — auditoria 2026-05-28
+.env
+*.key
+secrets.*
+*.pkl
+*.pem
+credentials.*
+*.p12
+*.pfx
