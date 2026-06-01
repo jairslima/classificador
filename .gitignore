@@ -13,3 +13,6 @@ secrets.*
 credentials.*
 *.p12
 *.pfx
+
+# Security patterns
+.env.*
